@@ -8,8 +8,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": false,
-      "cwd": "/home/sebasadowy/pus/cw1_c",
-      "program": "/home/sebasadowy/pus/cw1_c/build/Debug/outDebug",
+      "cwd": "/home/sebasadowy/pus/cw1_c/zadanie7",
+      "program": "/home/sebasadowy/pus/cw1_c/zadanie7/build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [

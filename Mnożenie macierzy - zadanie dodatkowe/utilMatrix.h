@@ -1,3 +1,5 @@
+#ifndef util_matrix
+#define util_matrix
 void printMatrix(int **matrix, int rows, int cols)
 {
     for (int i = 0; i < rows; i++)
@@ -35,3 +37,4 @@ void multiplyMatrices(int **first, int **second, int **result, int row1, int col
         }
     }
 }
+#endif

@@ -99,6 +99,7 @@ void multiplyMatricesSignalVariantWithProcessLimit(int **first, int **second, in
         for (int j = 0; j < col2; j++)
         {
             while(process_count >= MAX_PROCESSES){
+                usleep(10);
             }
             process_count++; // Increment the process count
             pid_t pid = fork();

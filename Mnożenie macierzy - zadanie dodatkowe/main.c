@@ -3,17 +3,9 @@
 #include <time.h>
 #include "utilMatrix.h"
 #include "signalsVariant.h"
+#include "fileVariant.h"
 
 int maxProcessLimit = 0x0;
-
-int generate_random_int(int a, int b)
-{
-    // Generate a random number between 0 and (b - a + 1)
-    int random_num = rand() % (b - a + 1);
-
-    // Shift the range to [a, b]
-    return a + random_num;
-}
 
 void printBinary(int number)
 {
@@ -33,17 +25,23 @@ void printBinary(int number)
     printf("\n");
 }
 
-void userInterface(int *r1, int *r2, int *c1, int *c2)
+void userInterface(int *r1, int *r2, int *c1, int *c2, int *l, int *u)
 {
     printf("Enter rows and columns for the first matrix: ");
     scanf("%d %d", r1, c1);
     printf("Enter rows and columns for the second matrix: ");
     scanf("%d %d", r2, c2);
+    printf("Enter lower and upper bound for numbers in the matrix: ");
+    scanf("%d %d", l, u);
 }
-
+enum algo_variant
+{
+    SIGNALS,
+    FILES
+} av = SIGNALS;
 int main(int argc, char *argv[])
 {
-    int row1, col1, row2, col2;
+    int row1, col1, row2, col2, lb, ub;
 
     srand(time(NULL)); // Seed the random number generator
 
@@ -58,6 +56,10 @@ int main(int argc, char *argv[])
         {
             maxProcessLimit = 0x1;
         }
+        else if (strcmp(argv[i], "--file-variant") == 0)
+        {
+            av = FILES;
+        }
     }
 
     if (userInput == 0)
@@ -66,10 +68,12 @@ int main(int argc, char *argv[])
         row2 = generate_random_int(3, 3);
         col1 = row2;
         col2 = generate_random_int(3, 3);
+        lb = generate_random_int(0, 10);
+        ub = generate_random_int(6, 100);
     }
     else
     {
-        userInterface(&row1, &row2, &col1, &col2);
+        userInterface(&row1, &row2, &col1, &col2, &lb, &ub);
     }
 
     // Check if matrix multiplication is possible
@@ -78,36 +82,32 @@ int main(int argc, char *argv[])
         printf("Matrix multiplication not possible. Number of columns in the first matrix must equal number of rows in the second matrix.\n");
         return -1;
     }
-    // Allocate memory for the first matrix
-    int **first = (int **)malloc(row1 * sizeof(int *));
-    for (int i = 0; i < row1; i++)
-    {
-        first[i] = (int *)malloc(col1 * sizeof(int));
-    }
-    // Allocate memory for the second matrix
-    int **second = (int **)malloc(row2 * sizeof(int *));
-    for (int i = 0; i < row2; i++)
-    {
-        second[i] = (int *)malloc(col2 * sizeof(int));
-    }
+    int **first = allocateMatrix(row1, col1);
+    int **second = allocateMatrix(row2, col2);
 
-    generateRandomMatrix(first, row1, col1);
+    generateRandomMatrix(first, row1, col1, lb, ub);
     printf("Generated first matrix:\n");
     printMatrix(first, row1, col1);
-    generateRandomMatrix(second, row2, col2);
+    generateRandomMatrix(second, row2, col2, lb, ub);
     printf("Generated second matrix:\n");
     printMatrix(second, row2, col2);
 
-    foo(first, second, row1, col1, col2, 0x0);
+    if (av == SIGNALS)
+    {
+        foo(first, second, row1, col1, col2, maxProcessLimit);
+    }
+    else if (av == FILES)
+    {
+        int **res = allocateMatrix(row2, col2);
+        printf("using file variant\n");
+        multiplyMatricesFileWariant(first, second, res, row1, col1, col2);
+        printMatrix(res, row1, col2);
+        freeMatrix(res, row1);
+    }
 
     // Free allocated memory
-    for (int i = 0; i < row1; i++)
-        free(first[i]);
-    free(first);
-
-    for (int i = 0; i < row2; i++)
-        free(second[i]);
-    free(second);
+    freeMatrix(first, row1);
+    freeMatrix(second, row2);
 
     return 0;
 }

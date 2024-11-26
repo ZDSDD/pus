@@ -1,5 +1,5 @@
-#ifndef util_matrix
-#define util_matrix
+#ifndef utilMatrix
+#define utilMatrix
 
 // Helper function to allocate 2D matrix
 int **allocateMatrix(int rows, int cols)

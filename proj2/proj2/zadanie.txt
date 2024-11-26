@@ -1,0 +1,30 @@
+przyład kodu do mnożenie macierzy
+
+#include <stdio.h>
+#include <stdlib.h>
+
+void mnozenieMacierzy() {
+    int aMatrix[3][2] = {{1, 4}, {2, 5}, {3, 6}};
+    int bMatrix[2][3] = {{7, 8, 9}, {10, 11, 12}};
+    int product[3][3] = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
+
+    for (int row = 0; row < 3; row++) {
+        for (int col = 0; col < 3; col++) {            
+            for (int inner = 0; inner < 2; inner++) {
+                product[row][col] += aMatrix[row][inner] * bMatrix[inner][col];
+            }
+            printf("%d ", product[row][col]);
+        }
+        printf("\n");
+    }
+}
+
+/*
+ * 
+ */
+int main(int argc, char** argv) {
+    mnozenieMacierzy();      
+    return (EXIT_SUCCESS);
+}
+Proszę o przygotowanie aplikacji w której obliczane wyniki realizowane są równolegle przez osobne procesy (każy element w macierzy wynikowej obliczany w osobnym procesie). Proces macierzysty pełni rolę zarządcy i rozdziela zadania na koniec wyświetla wyliczoną macierz oraz wynik różnicy wyliczony na podstawie dostarczonego kodu wyżej wraz z pomiarem czasu. Testy przeprowadzić na macierzach które mają np. 10000 i 1000000.
+W komunikacji proszę wykorzystać 2 sposoby komunikacji przez pamięć współdzieloną i inny wybrany sposób opisany podczas zajęć. Cała komunikacja między procesami realizowana w wybranym sposobie

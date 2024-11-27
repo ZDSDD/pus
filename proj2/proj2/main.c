@@ -15,6 +15,109 @@
 #define MAX_CONCURRENT 5 // Max number of processes to run at the same time
 
 #define SHM_KEY 12345
+void verify_results(int **first, int **second, int rows, int cols)
+{
+    int result_match = 1;
+    for (int i = 0; i < rows; i++)
+    {
+        for (int j = 0; j < cols; j++)
+        {
+            if (first[i][j] != second[i][j])
+            {
+                result_match = 0;
+                break;
+            }
+        }
+        if (!result_match)
+            break;
+    }
+
+    printf("Wyniki obu metod %s\n", result_match ? "ZGODNE" : "RÓŻNE");
+}
+
+void multiplyMatricesUsingPipes(int **first, int **second, int **result, int row1, int common_dim, int col2)
+{
+    int i, j, k;
+
+    // Create pipes for communication
+    int pipes[row1][col2][2]; // One pipe for each cell in the result matrix
+
+    for (i = 0; i < row1; i++)
+    {
+        for (j = 0; j < col2; j++)
+        {
+            if (pipe(pipes[i][j]) == -1)
+            {
+                perror("pipe");
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+
+    // Create child processes
+    for (i = 0; i < row1; i++)
+    {
+        for (j = 0; j < col2; j++)
+        {
+            pid_t pid = fork();
+
+            if (pid == -1)
+            {
+                perror("fork");
+                exit(EXIT_FAILURE);
+            }
+
+            if (pid == 0)
+            {                          // Child process
+                close(pipes[i][j][0]); // Close read end of the pipe in the child
+
+                // Compute the cell value
+                int cellValue = 0;
+                for (k = 0; k < common_dim; k++)
+                {
+                    cellValue += first[i][k] * second[k][j];
+                }
+
+                // Write the result to the pipe
+                if (write(pipes[i][j][1], &cellValue, sizeof(int)) == -1)
+                {
+                    perror("write");
+                    exit(EXIT_FAILURE);
+                }
+
+                close(pipes[i][j][1]); // Close write end of the pipe
+                exit(0);               // Terminate child process
+            }
+        }
+    }
+
+    // Parent process: Gather results
+    for (i = 0; i < row1; i++)
+    {
+        for (j = 0; j < col2; j++)
+        {
+            close(pipes[i][j][1]); // Close write end of the pipe in the parent
+
+            // Read the result from the pipe
+            if (read(pipes[i][j][0], &result[i][j], sizeof(int)) == -1)
+            {
+                perror("read");
+                exit(EXIT_FAILURE);
+            }
+
+            close(pipes[i][j][0]); // Close read end of the pipe
+        }
+    }
+
+    // Wait for all child processes to complete
+    for (i = 0; i < row1; i++)
+    {
+        for (j = 0; j < col2; j++)
+        {
+            wait(NULL);
+        }
+    }
+}
 
 void calculate_element_shared_memory(int **A, int **B, int row, int col, int common_dim, int shm_id, int cols)
 {
@@ -40,49 +143,10 @@ void calculate_element_shared_memory(int **A, int **B, int row, int col, int com
     }
     exit(EXIT_SUCCESS);
 }
-typedef struct Data
-{
-    int row;
-    int col;
-    int value;
-} data_t;
 
-void calculate_element_pipe(int **A, int **B, int row, int col, int common_dim, int write_fd)
-{
-    int result = 0;
-    for (int k = 0; k < common_dim; k++)
-    {
-        result += A[row][k] * B[k][col];
-    }
-
-    data_t toSend = {row, col, result};
-
-    // Use a loop with error handling for writing
-    ssize_t bytes_written;
-    bytes_written = write(write_fd, &toSend, sizeof(data_t));
-    if (bytes_written == -1)
-    {
-        perror("write failed");
-        close(write_fd);
-        exit(EXIT_FAILURE);
-    }
-
-    close(write_fd);
-    exit(EXIT_SUCCESS);
-}
-/* procedura obslugi sygnalu SIGCLD */
-void handler_sigcld(int sig)
-{
-    int status;
-    while (waitpid(-1, &status, WNOHANG) > 0)
-        ;
-}
 int main(int argc, char *argv[])
 {
-    /* instalacja procedury obslugi sygnalu SIGCLD */
-    signal(SIGCLD, handler_sigcld);
-
-    int rows = 100, cols = 100, common_dim = 100;
+    int rows = 1000, cols = 1000, common_dim = 100;
 
     int **A = allocateMatrix(rows, common_dim);
     int **B = allocateMatrix(common_dim, cols);
@@ -123,8 +187,14 @@ int main(int argc, char *argv[])
     // wait for all processess to end
     printf("czekamy...\n");
     // Wait for all processes
-    while (wait(NULL) > 0)
-        ;
+    // Wait for all child processes to complete
+    for (int i = 0; i < rows; i++)
+    {
+        for (int j = 0; j < cols; j++)
+        {
+            wait(NULL);
+        }
+    }
 
     printf("procesy z pamiecia wspoldezielona zakonczony\n");
 
@@ -144,77 +214,34 @@ int main(int argc, char *argv[])
     shmctl(shm_id, IPC_RMID, NULL); // clear shared memory
 
     // PIPES //
-    int pipe_fd[2];
-    if (pipe(pipe_fd) == -1)
-    {
-        perror("Błąd tworzenia potoku");
-        exit(EXIT_FAILURE);
-    }
-
     clock_gettime(CLOCK_MONOTONIC, &start);
-
-    for (int i = 0; i < rows; i++)
-    {
-        for (int j = 0; j < cols; j++)
-        {
-            pid_t pid = fork();
-            if (pid == 0)
-            {
-                close(pipe_fd[0]); // Zamknij odczyt w procesach potomnych
-                calculate_element_pipe(A, B, i, j, common_dim, pipe_fd[1]);
-            }
-            else if (pid < 0)
-            {
-                perror("Fork failed");
-                break;
-            }
-        }
-    }
-
-    close(pipe_fd[1]); // Zamknij zapis w procesie macierzystym
-
-    // wait for all processess to end
-    printf("czekamy...\n");
-    // Wait for pipe processes
+    multiplyMatricesUsingPipes(A, B, result_pipe, rows, common_dim, cols);
+    // Odczekaj na zakończenie wszystkich procesów potomnych
+    printf("zaczybamy zczekac\n");
     while (wait(NULL) > 0)
         ;
-
-    printf("procesy z pipem zakonczone!\n");
-
-    data_t data;
-    close(pipe_fd[1]); // Zamykamy stronę zapisu
-    while (read(pipe_fd[0], &data, sizeof(data)) > 0)
-    {
-        result_pipe[data.row][data.col] = data.value;
-    }
-    close(pipe_fd[0]);
-
+    printf("skonczyule czekac\n");
     clock_gettime(CLOCK_MONOTONIC, &end);
     double time_pipe = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
 
     // Dodatkowa weryfikacja wyniku
-    int result_match = 1;
-    for (int i = 0; i < rows; i++)
-    {
-        for (int j = 0; j < cols; j++)
-        {
-            if (result_shared_memory[i][j] != result_pipe[i][j])
-            {
-                result_match = 0;
-                break;
-            }
-        }
-        if (!result_match)
-            break;
-    }
-    printf("Wyniki obu metod %s\n", result_match ? "ZGODNE" : "RÓŻNE");
-    // Print resultss
-    // printf("Wynik (pamięć współdzielona):\n");
-    // printMatrix(result_shared_memory, rows, cols);
-    printf("Czas (pamięć współdzielona): %.6f sekund\n", time_shared_memory);
 
-    // printf("Wynik (pipes):\n");
+    int **result_true = allocateMatrix(rows, cols);
+    multiplyMatrices(A, B, result_true, rows, common_dim, cols);
+    // printf("\n");
+    // printMatrix(result_true, rows, cols);
+    // printf("\n");
     // printMatrix(result_pipe, rows, cols);
+    // printf("\n");
+    // printMatrix(result_shared_memory, rows, cols);
+    // printf("\n");
+    printf("Wyniki dla pipe & result true: \n");
+    verify_results(result_pipe, result_true, rows, cols);
+    printf("Wyniki dla shared_memory & result true: \n");
+    verify_results(result_shared_memory, result_true, rows, cols);
+    printf("Wyniki dla shared_memory & pipe: \n");
+    verify_results(result_shared_memory, result_pipe, rows, cols);
+    printf("Czas (pamięć współdzielona): %.6f sekund\n", time_shared_memory);
     printf("Czas (pipes): %.6f sekund\n", time_pipe);
 
     // Free allocated memory
@@ -222,5 +249,6 @@ int main(int argc, char *argv[])
     freeMatrix(B, common_dim);
     freeMatrix(result_shared_memory, rows);
     freeMatrix(result_pipe, rows);
+    freeMatrix(result_true, rows);
     return 0;
 }

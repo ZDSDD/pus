@@ -146,7 +146,7 @@ void calculate_element_shared_memory(int **A, int **B, int row, int col, int com
 
 int main(int argc, char *argv[])
 {
-    int rows = 1000, cols = 1000, common_dim = 100;
+    int rows = 100, cols = 100, common_dim = 100;
 
     int **A = allocateMatrix(rows, common_dim);
     int **B = allocateMatrix(common_dim, cols);

@@ -12,8 +12,6 @@
 #include <sys/ipc.h>   // Defines IPC macros and structures
 #include <sys/shm.h>   // Defines shared memory operations
 
-#define MAX_CONCURRENT 5 // Max number of processes to run at the same time
-
 #define SHM_KEY 12345
 void verify_results(int **first, int **second, int rows, int cols)
 {
@@ -39,7 +37,6 @@ void multiplyMatricesUsingPipes(int **first, int **second, int **result, int row
 {
     int i, j, k;
 
-    // Create pipes for communication
     int pipes[row1][col2][2]; // One pipe for each cell in the result matrix
 
     for (i = 0; i < row1; i++)
@@ -54,7 +51,6 @@ void multiplyMatricesUsingPipes(int **first, int **second, int **result, int row
         }
     }
 
-    // Create child processes
     for (i = 0; i < row1; i++)
     {
         for (j = 0; j < col2; j++)
@@ -86,7 +82,7 @@ void multiplyMatricesUsingPipes(int **first, int **second, int **result, int row
                 }
 
                 close(pipes[i][j][1]); // Close write end of the pipe
-                exit(0);               // Terminate child process
+                exit(EXIT_SUCCESS);    // Terminate child process
             }
         }
     }
@@ -106,15 +102,6 @@ void multiplyMatricesUsingPipes(int **first, int **second, int **result, int row
             }
 
             close(pipes[i][j][0]); // Close read end of the pipe
-        }
-    }
-
-    // Wait for all child processes to complete
-    for (i = 0; i < row1; i++)
-    {
-        for (j = 0; j < col2; j++)
-        {
-            wait(NULL);
         }
     }
 }
@@ -143,9 +130,20 @@ void calculate_element_shared_memory(int **A, int **B, int row, int col, int com
     }
     exit(EXIT_SUCCESS);
 }
-
+void handle_sigchld(int sig)
+{
+    // Reap all dead child processes
+    while (waitpid(-1, NULL, WNOHANG) > 0)
+    {
+    };
+}
 int main(int argc, char *argv[])
 {
+    struct sigaction sa;
+    sa.sa_handler = handle_sigchld;
+    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+    sigaction(SIGCHLD, &sa, NULL);
+
     int rows = 100, cols = 100, common_dim = 100;
 
     int **A = allocateMatrix(rows, common_dim);
@@ -167,7 +165,6 @@ int main(int argc, char *argv[])
     // Time benchmark
     struct timespec start, end;
     clock_gettime(CLOCK_MONOTONIC, &start);
-
     for (int i = 0; i < rows; i++)
     {
         for (int j = 0; j < cols; j++)
@@ -186,16 +183,8 @@ int main(int argc, char *argv[])
 
     // wait for all processess to end
     printf("czekamy...\n");
-    // Wait for all processes
-    // Wait for all child processes to complete
-    for (int i = 0; i < rows; i++)
-    {
-        for (int j = 0; j < cols; j++)
-        {
-            wait(NULL);
-        }
-    }
-
+    while (wait(NULL) > 0)
+        ;
     printf("procesy z pamiecia wspoldezielona zakonczony\n");
 
     clock_gettime(CLOCK_MONOTONIC, &end);
@@ -214,13 +203,15 @@ int main(int argc, char *argv[])
     shmctl(shm_id, IPC_RMID, NULL); // clear shared memory
 
     // PIPES //
+
     clock_gettime(CLOCK_MONOTONIC, &start);
     multiplyMatricesUsingPipes(A, B, result_pipe, rows, common_dim, cols);
+
     // Odczekaj na zakończenie wszystkich procesów potomnych
-    printf("zaczybamy zczekac\n");
+    printf("czekamy...\n");
     while (wait(NULL) > 0)
         ;
-    printf("skonczyule czekac\n");
+    printf("koniec czekania na wariant z pipem\n");
     clock_gettime(CLOCK_MONOTONIC, &end);
     double time_pipe = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
 
@@ -252,3 +243,21 @@ int main(int argc, char *argv[])
     freeMatrix(result_true, rows);
     return 0;
 }
+/*
+ *  Executing task: /bin/bash -c ./build/Debug/outDebug
+
+int rows = 1000, cols = 100, common_dim = 100;
+czekamy...
+procesy z pamiecia wspoldezielona zakonczony
+zaczybamy zczekac
+skonczyule czekac
+Wyniki dla pipe & result true:
+Wyniki obu metod ZGODNE
+Wyniki dla shared_memory & result true:
+Wyniki obu metod ZGODNE
+Wyniki dla shared_memory & pipe:
+Wyniki obu metod ZGODNE
+Czas (pamięć współdzielona): 12.606147 sekund
+Czas (pipes): 972.078343 sekund
+ *  Terminal will be reused by tasks, press any key to close it.
+*/
